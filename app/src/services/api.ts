@@ -28,7 +28,57 @@ export interface OpcionesApi {
  *     Si el estado es 401 (y la ruta no es /login): await olvidarSesion() y router.replace('/login').
  *  8. En cualquier otro caso, devolver el cuerpo JSON.
  */
+async function leerCuerpo(respuesta: Response): Promise<unknown> {
+  const texto = await respuesta.text();
+  if (!texto) return null;
+  try {
+    return JSON.parse(texto) as unknown;
+  } catch {
+    return { mensaje: texto };
+  }
+}
+
 export async function api<T = unknown>(ruta: string, opciones: OpcionesApi = {}): Promise<T> {
-  void [ErrorApi, obtenerToken, olvidarSesion, router, BASE_URL, TIEMPO_MAXIMO_MS, ruta, opciones];
-  throw new Error('TODO [M1] api() sin implementar');
+  const { method = 'GET', body, params } = opciones;
+  const consulta = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(params ?? {})) {
+    if (valor !== undefined && valor !== '') consulta.append(clave, String(valor));
+  }
+  const cadena = consulta.toString();
+  const destino = `${BASE_URL}${ruta}${cadena ? `${ruta.includes('?') ? '&' : '?'}${cadena}` : ''}`;
+
+  const cabeceras = new Headers({ Accept: 'application/json' });
+  const token = obtenerToken();
+  if (token) cabeceras.set('Authorization', `Bearer ${token}`);
+
+  let cuerpo: string | undefined;
+  if (body !== undefined) {
+    cabeceras.set('Content-Type', 'application/json');
+    cuerpo = JSON.stringify(body);
+  }
+
+  const controlador = new AbortController();
+  const temporizador = setTimeout(() => controlador.abort(), TIEMPO_MAXIMO_MS);
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(destino, { method, headers: cabeceras, body: cuerpo, signal: controlador.signal });
+  } catch {
+    throw new ErrorApi(0, { mensaje: 'No fue posible conectar con la API.' });
+  } finally {
+    clearTimeout(temporizador);
+  }
+
+  if (respuesta.status === 204) return null as T;
+
+  const cuerpoRespuesta = await leerCuerpo(respuesta);
+
+  if (!respuesta.ok) {
+    if (respuesta.status === 401 && ruta !== '/login') {
+      await olvidarSesion();
+      await router.replace('/login');
+    }
+    throw new ErrorApi(respuesta.status, cuerpoRespuesta);
+  }
+
+  return cuerpoRespuesta as T;
 }
