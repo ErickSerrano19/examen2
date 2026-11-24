@@ -57,14 +57,21 @@
       </div>
 
       <ion-list v-else>
-        <ion-item v-for="equipo in equipos" :key="equipo.id"
-          :router-link="`/tabs/equipos/${equipo.id}/editar`" detail>
-          <ion-label>
-            <h2>{{ equipo.nombre }}</h2>
-            <p>{{ equipo.codigo }} · {{ equipo.categoria.nombre }}</p>
-          </ion-label>
-          <ion-badge slot="end" :color="colorEstado[equipo.estado]">{{ equipo.estado }}</ion-badge>
-        </ion-item>
+        <ion-item-sliding v-for="equipo in equipos" :key="equipo.id">
+          <ion-item :router-link="`/tabs/equipos/${equipo.id}/editar`" detail>
+            <ion-label>
+              <h2>{{ equipo.nombre }}</h2>
+              <p>{{ equipo.codigo }} · {{ equipo.categoria.nombre }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="colorEstado[equipo.estado]">{{ equipo.estado }}</ion-badge>
+          </ion-item>
+          <ion-item-options side="end">
+            <ion-item-option color="danger" @click="confirmarEliminacion(equipo, $event)">
+              <ion-icon slot="start" :icon="trashOutline" aria-hidden="true" />
+              Eliminar
+            </ion-item-option>
+          </ion-item-options>
+        </ion-item-sliding>
       </ion-list>
 
       <ion-infinite-scroll v-if="equipos.length > 0 && hayMas && !error" @ion-infinite="cargarMas">
@@ -90,7 +97,7 @@ import { mostrarToast } from '@/services/avisos';
 import { useConexion, vibrar } from '@/composables/useConexion';
 
 // Importaciones disponibles para su template (evita advertencias mientras no las use)
-void [IonItemSliding, IonItemOptions, IonItemOption, cloudOfflineOutline, searchOutline, trashOutline];
+void [cloudOfflineOutline, searchOutline];
 
 const colorEstado: Record<Estado, string> = { disponible: 'success', prestado: 'warning', mantenimiento: 'medium' };
 
@@ -159,8 +166,38 @@ async function cargarMas(evento: InfiniteScrollCustomEvent) {
  *       404 → quitarlo de la lista y avisar que ya no existe.
  */
 async function confirmarEliminacion(equipo: Equipo, evento: Event) {
-  void [equipo, evento, alertController, ErrorApi, mostrarToast, vibrar, eliminar];
-}
+  if (evento.target instanceof Element) {
+    const sliding = evento.target.closest('ion-item-sliding') as unknown as { close(): Promise<void> } | null;
+    await sliding?.close();
+  }
 
-void confirmarEliminacion;
+  const alerta = await alertController.create({
+    header: 'Eliminar equipo',
+    message: `¿Desea eliminar «${equipo.nombre}»?`,
+    buttons: [
+      { text: 'Cancelar', role: 'cancel' },
+      { text: 'Eliminar', role: 'destructive' },
+    ],
+  });
+  await alerta.present();
+  const { role } = await alerta.onDidDismiss();
+  if (role !== 'destructive') return;
+
+  try {
+    await eliminar(equipo.id);
+    equipos.value = equipos.value.filter((item) => item.id !== equipo.id);
+    await vibrar();
+    await mostrarToast('Equipo eliminado correctamente.', 'success');
+  } catch (error) {
+    if (error instanceof ErrorApi && error.status === 409) {
+      const mensaje = String(error.cuerpo?.mensaje ?? 'No se puede eliminar un equipo prestado.');
+      await mostrarToast(mensaje, 'warning');
+    } else if (error instanceof ErrorApi && error.status === 404) {
+      equipos.value = equipos.value.filter((item) => item.id !== equipo.id);
+      await mostrarToast('El equipo ya no existe.', 'warning');
+    } else {
+      await mostrarToast('No fue posible eliminar el equipo.', 'danger');
+    }
+  }
+}
 </script>
