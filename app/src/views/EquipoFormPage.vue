@@ -106,7 +106,28 @@ const errores = ref<Record<string, string>>({});
  */
 onIonViewWillEnter(async () => {
   errores.value = {};
-  void [categorias, obtener, listaCategorias, estadoActual, ionRouter];
+  try {
+    listaCategorias.value = await categorias();
+    Object.assign(datos, vacio());
+    estadoActual.value = 'disponible';
+    if (id) {
+      const equipo = await obtener(id);
+      datos.codigo = equipo.codigo;
+      datos.nombre = equipo.nombre;
+      datos.categoria_id = equipo.categoria.id;
+      datos.estado = equipo.estado === 'prestado' ? 'disponible' : equipo.estado;
+      datos.fecha_adquisicion = equipo.fecha_adquisicion;
+      datos.costo_interno = null;
+      estadoActual.value = equipo.estado;
+    }
+  } catch (error) {
+    if (error instanceof ErrorApi && error.status === 404) {
+      await mostrarToast('El equipo ya no existe.', 'danger');
+      ionRouter.navigate('/tabs/equipos', 'root', 'replace');
+    } else {
+      await mostrarToast('No fue posible cargar el formulario.', 'danger');
+    }
+  }
 });
 
 /**
@@ -120,6 +141,38 @@ onIonViewWillEnter(async () => {
  *     404 → toast "El equipo ya no existe."   ·   otros → toast genérico.
  */
 async function guardar() {
-  void [loadingController, actualizar, crear, ErrorApi, mostrarToast, vibrar];
+  const cargando = await loadingController.create({ message: 'Guardando…' });
+  await cargando.present();
+  errores.value = {};
+  try {
+    const cuerpo: DatosEquipo = {
+      ...datos,
+      codigo: String(datos.codigo ?? '').trim().toUpperCase(),
+      costo_interno: String(datos.costo_interno ?? '').trim() === '' ? null : Number(datos.costo_interno),
+    };
+    if (estadoActual.value === 'prestado') {
+      delete cuerpo.estado;
+    } else {
+      cuerpo.estado = datos.estado;
+    }
+
+    if (id) await actualizar(id, cuerpo);
+    else await crear(cuerpo);
+
+    await vibrar();
+    await mostrarToast('Equipo guardado correctamente.', 'success');
+    if (ionRouter.canGoBack()) ionRouter.back();
+    else ionRouter.navigate('/tabs/equipos', 'root', 'replace');
+  } catch (error) {
+    if (error instanceof ErrorApi && error.status === 422) {
+      errores.value = error.erroresPorCampo;
+    } else if (error instanceof ErrorApi && error.status === 404) {
+      await mostrarToast('El equipo ya no existe.', 'danger');
+    } else {
+      await mostrarToast('No fue posible guardar el equipo.', 'danger');
+    }
+  } finally {
+    await cargando.dismiss();
+  }
 }
 </script>
