@@ -33,6 +33,43 @@
         TODO [M6] Eliminación (8 pts)
           - Envuelva cada ion-item en ion-item-sliding con un ion-item-option "Eliminar" (color danger).
       -->
+
+      <ion-refresher slot="fixed" @ion-refresh="refrescar">
+        <ion-refresher-content pulling-text="Jale para actualizar" refreshing-text="Actualizando…" />
+      </ion-refresher>
+
+      <ion-list v-if="cargando && equipos.length === 0">
+        <ion-item v-for="n in 6" :key="n">
+          <ion-label>
+            <h2><ion-skeleton-text :animated="true" style="width: 65%" /></h2>
+            <p><ion-skeleton-text :animated="true" style="width: 40%" /></p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+
+      <div v-else-if="error" class="ion-padding estado-vacio">
+        <p>{{ error }}</p>
+        <ion-button fill="outline" @click="cargar(true)">Reintentar</ion-button>
+      </div>
+
+      <div v-else-if="equipos.length === 0" class="ion-padding estado-vacio">
+        <p>No hay equipos registrados.</p>
+      </div>
+
+      <ion-list v-else>
+        <ion-item v-for="equipo in equipos" :key="equipo.id"
+          :router-link="`/tabs/equipos/${equipo.id}/editar`" detail>
+          <ion-label>
+            <h2>{{ equipo.nombre }}</h2>
+            <p>{{ equipo.codigo }} · {{ equipo.categoria.nombre }}</p>
+          </ion-label>
+          <ion-badge slot="end" :color="colorEstado[equipo.estado]">{{ equipo.estado }}</ion-badge>
+        </ion-item>
+      </ion-list>
+
+      <ion-infinite-scroll v-if="equipos.length > 0 && hayMas && !error" @ion-infinite="cargarMas">
+        <ion-infinite-scroll-content loading-text="Cargando más equipos…" />
+      </ion-infinite-scroll>
     </ion-content>
   </ion-page>
 </template>
@@ -53,9 +90,7 @@ import { mostrarToast } from '@/services/avisos';
 import { useConexion, vibrar } from '@/composables/useConexion';
 
 // Importaciones disponibles para su template (evita advertencias mientras no las use)
-void [IonRefresher, IonRefresherContent, IonList, IonItem, IonLabel, IonSkeletonText, IonBadge,
-  IonItemSliding, IonItemOptions, IonItemOption, IonInfiniteScroll, IonInfiniteScrollContent,
-  cloudOfflineOutline, searchOutline, trashOutline];
+void [IonItemSliding, IonItemOptions, IonItemOption, cloudOfflineOutline, searchOutline, trashOutline];
 
 const colorEstado: Record<Estado, string> = { disponible: 'success', prestado: 'warning', mantenimiento: 'medium' };
 
@@ -77,25 +112,40 @@ const hayMas = computed(() => pagina.value < ultimaPagina.value);
  *  - Maneje cargando y error (un 401 ya lo resuelve api.ts).
  */
 async function cargar(reiniciar = false) {
-  void [reiniciar, listar, equipos, pagina, ultimaPagina, cargando, error];
+  if (cargando.value && !reiniciar) return;
+  const paginaSolicitada = reiniciar ? 1 : pagina.value + 1;
+  cargando.value = true;
+  error.value = '';
+  try {
+    const respuesta = await listar(paginaSolicitada, q.value);
+    pagina.value = respuesta.meta.current_page;
+    ultimaPagina.value = respuesta.meta.last_page;
+    equipos.value = reiniciar ? respuesta.data : [...equipos.value, ...respuesta.data];
+  } catch {
+    error.value = 'No fue posible cargar los equipos.';
+  } finally {
+    cargando.value = false;
+  }
 }
 
 /**
  * TODO [M4] La lista debe recargarse CADA VEZ que la persona vuelve a esta página
  *           (por ejemplo, al regresar del formulario). Elija el hook de ciclo de vida correcto.
  */
-void onIonViewWillEnter;
+onIonViewWillEnter(() => cargar(true));
 
 const buscar = () => cargar(true);
 
 /** TODO [M4] Recargar desde la página 1 y cerrar el refresher (evento.target.complete()). */
 async function refrescar(evento: RefresherCustomEvent) {
-  void evento;
+  await cargar(true);
+  evento.target.complete();
 }
 
 /** TODO [M4] Cargar la página siguiente y cerrar el infinite scroll (evento.target.complete()). */
 async function cargarMas(evento: InfiniteScrollCustomEvent) {
-  void evento;
+  await cargar(false);
+  evento.target.complete();
 }
 
 /**
@@ -112,5 +162,5 @@ async function confirmarEliminacion(equipo: Equipo, evento: Event) {
   void [equipo, evento, alertController, ErrorApi, mostrarToast, vibrar, eliminar];
 }
 
-void [refrescar, cargarMas, confirmarEliminacion, colorEstado, hayMas];
+void confirmarEliminacion;
 </script>
