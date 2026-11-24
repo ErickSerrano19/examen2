@@ -11,6 +11,22 @@ app/       App móvil. Aquí están los TODO M1–M8.
 
 Requisitos: PHP 8.4+, Composer, Node.js 22+, Android Studio con un emulador (API 24+), `npm i -g @ionic/cli`.
 
+Notas de entorno en esta máquina (Windows):
+
+- Use la terminal de **Laragon** para la API: `php` no está en el PATH de WSL. En PowerShell, agregue
+  `C:\laragon\bin\php\php-8.4.12-nts-Win32-vs17-x64` al PATH.
+- Gradle 8.14.3 no acepta el JBR 25 de Android Studio (`Unsupported class file major version 69`).
+  Seleccione JDK 24 en la misma terminal antes de los comandos Capacitor/Gradle:
+
+  ```powershell
+  $env:JAVA_HOME = "C:\Program Files\Java\jdk-24"
+  $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+  ```
+
+  En Android Studio: `Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK = JDK 24`.
+- Inicie el AVD (`Medium_Phone_API_37.0`) en Device Manager antes de `npx cap run android`.
+- `app/.env` ya existe: no vuelva a ejecutar `cp .env.example .env` después de cambiar `VITE_API_URL`.
+
 ```bash
 # 1. API  →  http://localhost:8000/api
 cd backend
@@ -25,6 +41,9 @@ ionic serve                 # o: npm run dev
 
 # 3. App en el emulador de Android
 #    en app/.env:  VITE_API_URL=http://10.0.2.2:8000/api
+#    en PowerShell, usar JDK 24 (ver notas arriba) y tener el AVD iniciado
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-24"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 ionic build
 npx cap sync android
 npx cap run android         # o: npx cap open android  y Run en Android Studio
@@ -35,7 +54,8 @@ npm run mock                # en .env: VITE_API_URL=http://localhost:3001/api  (
 
 Credenciales: `docente@ucr.ac.cr` · `Examen2026!`
 
-> Cada vez que cambie algo en `src/` y quiera verlo en el emulador: `ionic build` → `npx cap sync` → `npx cap run android`.
+> Cada vez que cambie algo en `src/` y quiera verlo en el emulador: `ionic build` → `npx cap sync android` → `npx cap run android`.
+> Verificación rápida sin emulador: `npm run build && npm run typecheck` (no hay scripts `lint` ni `test`).
 
 ## Qué hay que hacer
 
