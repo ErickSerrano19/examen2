@@ -4,6 +4,7 @@ import { Device } from '@capacitor/device';
 import { api } from '@/services/api';
 
 export interface Usuario { id: number; nombre: string }
+interface RespuestaLogin { token: string; usuario: Usuario }
 
 const CLAVE_TOKEN = 'token';
 const CLAVE_USUARIO = 'usuario';
@@ -26,7 +27,12 @@ export const obtenerToken = () => token.value;
 
 /** TODO [M2] Borrar token y usuario de la memoria (refs) y del almacenamiento cifrado. */
 export async function olvidarSesion() {
-  // TODO [M2]
+  token.value = null;
+  usuario.value = null;
+  await Promise.all([
+    SecureStorage.remove(CLAVE_TOKEN),
+    SecureStorage.remove(CLAVE_USUARIO),
+  ]);
 }
 
 export function useAuth() {
@@ -41,8 +47,18 @@ export function useAuth() {
    *  No atrape el error: LoginPage.vue ya muestra los 422.
    */
   async function login(email: string, password: string) {
-    void [email, password, api, Device, SecureStorage, CLAVE_TOKEN, CLAVE_USUARIO];
-    throw new Error('TODO [M2] login sin implementar');
+    const { platform, model } = await Device.getInfo();
+    const device_name = `${platform} ${model}`.slice(0, 60);
+    const respuesta = await api<RespuestaLogin>('/login', {
+      method: 'POST',
+      body: { email, password, device_name },
+    });
+    token.value = respuesta.token;
+    usuario.value = respuesta.usuario;
+    await Promise.all([
+      SecureStorage.set(CLAVE_TOKEN, respuesta.token),
+      SecureStorage.set(CLAVE_USUARIO, JSON.stringify(respuesta.usuario)),
+    ]);
   }
 
   /**
@@ -51,7 +67,20 @@ export function useAuth() {
    *  Debe ejecutarse una sola vez (use la bandera tokenCargado).
    */
   async function cargarToken() {
-    void tokenCargado;
+    if (tokenCargado) return;
+    tokenCargado = true;
+    const [tokenGuardado, usuarioGuardado] = await Promise.all([
+      SecureStorage.get(CLAVE_TOKEN),
+      SecureStorage.get(CLAVE_USUARIO),
+    ]);
+    if (typeof tokenGuardado === 'string' && tokenGuardado) token.value = tokenGuardado;
+    if (typeof usuarioGuardado === 'string' && usuarioGuardado) {
+      try {
+        usuario.value = JSON.parse(usuarioGuardado) as Usuario;
+      } catch {
+        usuario.value = null;
+      }
+    }
   }
 
   /**
@@ -60,7 +89,8 @@ export function useAuth() {
    *  aunque la API falle (sin red o token vencido).
    */
   async function cerrarSesion() {
-    // TODO [M2]
+    await api('/logout', { method: 'POST' }).catch(() => undefined);
+    await olvidarSesion();
   }
 
   return { usuario, estaAutenticado, login, cargarToken, cerrarSesion };
